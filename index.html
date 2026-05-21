@@ -180,9 +180,12 @@
     return [...map.values()];
   };
 
-  // In-memory cache of bundled ESV texts (loaded from esv.json once per session).
+  // In-memory data structures derived from esv.json (loaded once per session).
   // Kept separate from textCache (persistent API cache) so we don't bloat localStorage.
-  const bundledTexts = {};
+  const bundledTexts = {};         // ref string  → verse text     e.g. "John 3:16"  → "..."
+  const bundledByBook = new Map(); // book slug   → { en, abbr, testament, chapters: Map<int, Map<int, text>> }
+  const bundledBooks = [];         // array of book metadata in canonical order
+  let bundledAliasMap = null;      // lowercased alias → book slug (lazy)
 
   const textFor = (ref) => bundledTexts[ref] || textCache[ref] || null;
 
@@ -192,20 +195,86 @@
       const res = await fetch("esv.json");
       if (!res.ok) return false;
       const data = await res.json();
+      bundledBooks.length = 0;
+      for (const b of data.books) {
+        bundledBooks.push(b);
+        bundledByBook.set(b.slug, { ...b, chapters: new Map() });
+      }
       const slugToAbbr = Object.fromEntries(data.books.map(b => [b.slug, b.abbr]));
       for (const v of data.verses) {
         const abbr = slugToAbbr[v.book];
         if (!abbr) continue;
         const ref = `${abbr} ${v.chapter}:${v.verse}`;
         bundledTexts[ref] = v.text;
+        const bk = bundledByBook.get(v.book);
+        if (!bk.chapters.has(v.chapter)) bk.chapters.set(v.chapter, new Map());
+        bk.chapters.get(v.chapter).set(v.verse, v.text);
       }
       bundledLoaded = true;
-      console.log(`[memorize] bundled esv.json loaded (${Object.keys(bundledTexts).length} verses)`);
+      console.log(`[memorize] bundled esv.json loaded (${Object.keys(bundledTexts).length} verses, ${bundledBooks.length} books)`);
       return true;
     } catch (e) {
-      // Likely no esv.json deployed (public/API-only mode). Silently fall through.
       return false;
     }
+  }
+
+  // Build a lower-case alias map for parsing reference strings. Includes:
+  //   - canonical abbr (lower-case): "john", "1 pet", "ps"
+  //   - alternative common abbreviations: "jn", "jhn", "matt", "mt", "rev", etc.
+  //   - full English name lower-case
+  //   - slug lower-case
+  function getAliasMap() {
+    if (bundledAliasMap) return bundledAliasMap;
+    bundledAliasMap = new Map();
+    const EXTRAS = {
+      // book slug → list of accepted aliases (all lowercased)
+      Gen: ["gn"], Exo: ["exod"], Lev: ["lv"], Num: ["nm"], Deu: ["dt"],
+      Jos: ["js"], Jdg: ["judg", "jg"], Rut: ["rt", "ru"],
+      "1Sa": ["1sm", "1s"], "2Sa": ["2sm", "2s"], "1Ki": ["1k"], "2Ki": ["2k"],
+      "1Ch": ["1ch"], "2Ch": ["2ch"], Ezr: ["ez"], Neh: ["ne"], Est: ["es"],
+      Job: ["jb"], Psa: ["psalm", "psalms", "pss"], Pro: ["prv", "pr"],
+      Ecc: ["ec", "qoh"], Sng: ["sos", "song of songs", "canticles", "ss"],
+      Isa: ["is"], Jer: ["jr"], Lam: ["lm"], Eze: ["ezk", "ez"], Dan: ["dn"],
+      Hos: ["ho"], Joe: ["jl"], Amo: ["am"], Oba: ["ob"], Jon: ["jnh", "jh"],
+      Mic: ["mi"], Nah: ["na"], Hab: ["hb"], Zep: ["zp"], Hag: ["hg"],
+      Zec: ["zc", "zech"], Mal: ["ml"],
+      Mat: ["mt", "matthew"], Mar: ["mk", "mrk", "mark"], Luk: ["lk"],
+      Joh: ["jn", "jhn", "john"], Act: ["ac"], Rom: ["rm", "ro"],
+      "1Co": ["1co", "1cor"], "2Co": ["2co", "2cor"], Gal: ["gl"], Eph: ["ephes"],
+      Phi: ["php", "philip"], Col: ["cl"], "1Th": ["1th"], "2Th": ["2th"],
+      "1Ti": ["1tim"], "2Ti": ["2tim"], Tit: ["tt"], Phm: ["phlm", "phm", "philem"],
+      Heb: ["hb"], Jas: ["jm", "ja", "jms"], "1Pe": ["1p", "1pet"], "2Pe": ["2p", "2pet"],
+      "1Jo": ["1jn", "1jhn", "1jo"], "2Jo": ["2jn", "2jhn"], "3Jo": ["3jn", "3jhn"],
+      Jud: ["jd", "jude"], Rev: ["re", "rv", "apoc", "apocalypse"],
+    };
+    for (const b of bundledBooks) {
+      const norm = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
+      bundledAliasMap.set(norm(b.abbr), b.slug);
+      bundledAliasMap.set(norm(b.en), b.slug);
+      bundledAliasMap.set(norm(b.slug), b.slug);
+      for (const extra of (EXTRAS[b.slug] || [])) {
+        bundledAliasMap.set(norm(extra), b.slug);
+      }
+    }
+    return bundledAliasMap;
+  }
+
+  // Parse "John 3:16" → { ref, text, book, chapter, verse } from the bundle, or null.
+  function parseEsvRef(s) {
+    if (!bundledLoaded) return null;
+    const trimmed = (s || "").trim();
+    // Accept "<book> <chap>:<verse>" with the book containing letters/digits/spaces.
+    const m = trimmed.match(/^([A-Za-z0-9 ]+?)\s*(\d{1,3})\s*[:.]?\s*(\d{1,3})$/);
+    if (!m) return null;
+    const bookKey = m[1].toLowerCase().replace(/\s+/g, " ").trim();
+    const aliases = getAliasMap();
+    const slug = aliases.get(bookKey);
+    if (!slug) return null;
+    const ch = parseInt(m[2], 10), vs = parseInt(m[3], 10);
+    const bk = bundledByBook.get(slug);
+    const text = bk?.chapters.get(ch)?.get(vs);
+    if (!text) return null;
+    return { ref: `${bk.abbr} ${ch}:${vs}`, text, book: slug, chapter: ch, verse: vs };
   }
 
   const getState = (ref) => progress[ref] || { box: 0, lastReviewed: null };
@@ -237,8 +306,12 @@
   // ESV API client
   // ============================================================================
   async function fetchVerse(ref) {
+    // Prefer the local bundle — no network or API key needed when esv.json is loaded.
+    if (bundledTexts[ref]) return bundledTexts[ref];
     if (textCache[ref]) return textCache[ref];
-    if (!settings.esvApiKey) throw new Error("No ESV API key set. Add one in Settings.");
+    if (!settings.esvApiKey) {
+      throw new Error("Verse not in local bundle, and no ESV API key set. Either deploy esv.json locally, or add a key in Settings.");
+    }
     const url = new URL(ESV_API);
     url.searchParams.set("q", ref);
     url.searchParams.set("include-passage-references", "false");
@@ -263,10 +336,11 @@
   }
 
   async function ensureTextsForRefs(refs, onProgress) {
-    const missing = refs.filter(r => !textCache[r]);
+    // A verse is "covered" if it's in the bundle OR already in the API cache.
+    const missing = refs.filter(r => !bundledTexts[r] && !textCache[r]);
     if (!missing.length) return { fetched: 0, total: 0, errors: [] };
     if (!settings.esvApiKey) {
-      throw new Error("No ESV API key set. Add one in Settings to fetch verse text.");
+      throw new Error(`${missing.length} verse(s) missing from local bundle and no ESV API key set.`);
     }
     let fetched = 0;
     const errors = [];
@@ -523,21 +597,29 @@
 
   function renderTextNotLoadedNotice() {
     const missing = activeVerses().filter(v => !textFor(v.ref)).length;
-    if (!settings.esvApiKey) {
+    if (missing === 0) return "";
+    if (bundledLoaded) {
+      // Bundle is loaded but some refs aren't in it (only happens for custom-added refs
+      // outside the canonical structure — rare). Fall back to API if available.
+      if (settings.esvApiKey) {
+        return `
+          <div class="card" style="border-left:3px solid var(--accent);">
+            <strong>${missing} verse${missing > 1 ? "s" : ""} not in the local bundle</strong>
+            <div class="hint">Tap <em>Settings → Fetch all verses</em> to grab them from the ESV API.</div>
+          </div>`;
+      }
       return `
         <div class="card" style="border-left:3px solid var(--accent);">
-          <strong>ESV API key required</strong>
-          <div class="hint">No verse text loaded yet. Go to <strong>Settings</strong> to enter your free ESV API key, then return here.</div>
+          <strong>${missing} custom verse${missing > 1 ? "s" : ""} not in the local bundle</strong>
+          <div class="hint">Remove them from <strong>My List</strong>, or add an ESV API key in Settings to fetch them.</div>
         </div>`;
     }
-    if (missing > 0) {
-      return `
-        <div class="card" style="border-left:3px solid var(--accent);">
-          <strong>${missing} verse${missing > 1 ? "s" : ""} not yet downloaded</strong>
-          <div class="hint">Go to <strong>Settings</strong> and tap <em>Fetch all verses</em>.</div>
-        </div>`;
-    }
-    return "";
+    // No bundle loaded — instruct user to put esv.json next to the app or add an API key.
+    return `
+      <div class="card" style="border-left:3px solid var(--accent);">
+        <strong>No verse text available</strong>
+        <div class="hint">Place <code>esv.json</code> in the app folder (run <code>build/parse_esv.py</code> from the project root), <em>or</em> add an ESV API key in <strong>Settings</strong>.</div>
+      </div>`;
   }
 
   function renderDrill() {
@@ -821,56 +903,173 @@
   }
 
   // ============================================================================
-  // Browse view (reference input → ESV API)
+  // Browse view (reference / search / book picker — all bundle-driven, no API needed)
   // ============================================================================
-  let browse = { lastInput: "", lastResult: null, fetching: false };
+  let browse = { mode: "ref", bookSlug: null, chapter: null };
 
   function renderBrowse() {
     updateStats();
-    const inList = (ref) => allVerses().some(v => v.ref === ref);
+    if (!bundledLoaded) {
+      document.getElementById("content").innerHTML = `
+        <div class="card"><div class="empty">
+          The local ESV bundle (<code>esv.json</code>) is not loaded.<br>
+          Run <code>python3 build/parse_esv.py</code> from the project root, then refresh.
+        </div></div>`;
+      return;
+    }
+
     document.getElementById("content").innerHTML = `
-      <div class="card">
-        <div style="font-weight:600;margin-bottom:0.5rem;">Add a verse</div>
-        <input type="text" id="browse-input" placeholder="e.g. John 3:16  or  Romans 8:28-30">
-        <div class="hint">Enter any ESV reference. The app fetches the text from api.esv.org and adds it to your list.</div>
-        <div id="browse-result" style="margin-top:0.75rem;"></div>
+      <div class="browse">
+        <div style="display:flex;gap:0.4rem;margin-bottom:1rem;">
+          <button class="btn ${browse.mode==='ref'?'primary':''}"    data-mode="ref">Reference</button>
+          <button class="btn ${browse.mode==='search'?'primary':''}" data-mode="search">Search text</button>
+          <button class="btn ${browse.mode==='book'?'primary':''}"   data-mode="book">By book</button>
+        </div>
+        <div id="browse-body"></div>
       </div>`;
 
-    const input = document.getElementById("browse-input");
+    document.querySelectorAll("[data-mode]").forEach(b => {
+      b.addEventListener("click", () => {
+        browse.mode = b.dataset.mode;
+        browse.bookSlug = null; browse.chapter = null;
+        renderBrowse();
+      });
+    });
+
+    if (browse.mode === "ref")    renderBrowseRef();
+    else if (browse.mode === "search") renderBrowseSearch();
+    else                           renderBrowseBook();
+  }
+
+  function renderBrowseRef() {
+    const body = document.getElementById("browse-body");
+    body.innerHTML = `
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.5rem;">Look up a verse</div>
+        <input type="text" id="ref-input" placeholder="e.g. John 3:16  •  Phil 4:13  •  1 Pet 2:21">
+        <div class="hint">Book abbreviations like <em>Jn</em>, <em>Matt</em>, <em>1 Cor</em>, <em>Ps</em> are accepted, plus full names.</div>
+        <div id="ref-result" style="margin-top:0.75rem;"></div>
+      </div>`;
+    const input = document.getElementById("ref-input");
+    input.focus();
+    input.addEventListener("input", (e) => {
+      const q = e.target.value;
+      const r = document.getElementById("ref-result");
+      const v = parseEsvRef(q);
+      if (!v) {
+        r.innerHTML = q.trim().length >= 3
+          ? `<div class="hint">No match. Format: <em>&lt;Book&gt; &lt;chapter&gt;:&lt;verse&gt;</em></div>`
+          : "";
+        return;
+      }
+      const already = allVerses().some(x => x.ref === v.ref);
+      r.innerHTML = renderVerseResultRow(v.ref, v.text, already);
+      wireAddButtons(r);
+    });
+  }
+
+  function renderBrowseSearch() {
+    const body = document.getElementById("browse-body");
+    body.innerHTML = `
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.5rem;">Search verse text</div>
+        <input type="text" id="search-input" placeholder="e.g. love is patient  •  the kingdom of God">
+        <div class="hint">Case-insensitive substring search across all ${Object.keys(bundledTexts).length.toLocaleString()} bundled verses. Limit 50 results.</div>
+        <div id="search-results" style="margin-top:0.75rem;"></div>
+      </div>`;
+    const input = document.getElementById("search-input");
     input.focus();
     let timer;
     input.addEventListener("input", (e) => {
       clearTimeout(timer);
-      const q = e.target.value.trim();
-      const r = document.getElementById("browse-result");
+      const q = e.target.value.trim().toLowerCase();
+      const r = document.getElementById("search-results");
       if (q.length < 3) { r.innerHTML = ""; return; }
-      timer = setTimeout(async () => {
-        if (!settings.esvApiKey) { r.innerHTML = `<div class="hint">Add your ESV API key in Settings first.</div>`; return; }
-        r.innerHTML = `<div class="loading">Fetching from ESV…</div>`;
-        try {
-          const text = await fetchVerse(q);
-          const ref = q;
-          const already = inList(ref);
-          r.innerHTML = `
-            <div class="verse-result" data-ref="${escapeHtml(ref)}">
-              <div class="vr-text">
-                <div class="vr-ref">${escapeHtml(ref)}</div>
-                <div class="vr-body">${escapeHtml(text)}</div>
-              </div>
-              <button data-add="${escapeHtml(ref)}" class="${already?"added":""}">${already ? "Added" : "Add"}</button>
-            </div>`;
-          r.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => addVerse(b.dataset.add)));
-        } catch (err) {
-          r.innerHTML = `<div class="hint" style="color:var(--no);">Error: ${escapeHtml(err.message)}</div>`;
+      timer = setTimeout(() => {
+        const hits = [];
+        for (const [ref, text] of Object.entries(bundledTexts)) {
+          if (text.toLowerCase().includes(q)) {
+            hits.push({ ref, text });
+            if (hits.length >= 50) break;
+          }
         }
-      }, 400);
+        if (!hits.length) { r.innerHTML = `<div class="hint">No matches.</div>`; return; }
+        r.innerHTML = hits.map(h =>
+          renderVerseResultRow(h.ref, h.text, allVerses().some(x => x.ref === h.ref))
+        ).join("");
+        wireAddButtons(r);
+      }, 150);
     });
+  }
+
+  function renderBrowseBook() {
+    const body = document.getElementById("browse-body");
+
+    if (!browse.bookSlug) {
+      const ot = bundledBooks.filter(b => b.testament === "OT");
+      const nt = bundledBooks.filter(b => b.testament === "NT");
+      const button = (b) => `<button class="btn" data-slug="${b.slug}" style="padding:0.45rem 0.6rem;flex:0 0 auto;">${escapeHtml(b.abbr)}</button>`;
+      body.innerHTML = `
+        <div class="card">
+          <div style="color:var(--muted);font-size:0.85rem;">Old Testament</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin:0.4rem 0 1rem;">${ot.map(button).join("")}</div>
+          <div style="color:var(--muted);font-size:0.85rem;">New Testament</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin:0.4rem 0;">${nt.map(button).join("")}</div>
+        </div>`;
+      body.querySelectorAll("[data-slug]").forEach(b => {
+        b.addEventListener("click", () => { browse.bookSlug = b.dataset.slug; browse.chapter = null; renderBrowse(); });
+      });
+      return;
+    }
+
+    const bk = bundledByBook.get(browse.bookSlug);
+    if (!browse.chapter) {
+      const chs = [...bk.chapters.keys()].sort((a, b) => a - b);
+      body.innerHTML = `
+        <button class="btn" data-back style="max-width:8rem;margin-bottom:0.5rem;">← Back</button>
+        <div class="card">
+          <div style="font-weight:600;margin-bottom:0.5rem;">${escapeHtml(bk.en)} — pick a chapter</div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.3rem;">
+            ${chs.map(c => `<button class="btn" data-chap="${c}" style="padding:0.35rem 0.55rem;flex:0 0 auto;">${c}</button>`).join("")}
+          </div>
+        </div>`;
+      body.querySelector("[data-back]").addEventListener("click", () => { browse.bookSlug = null; renderBrowse(); });
+      body.querySelectorAll("[data-chap]").forEach(b => {
+        b.addEventListener("click", () => { browse.chapter = parseInt(b.dataset.chap, 10); renderBrowse(); });
+      });
+      return;
+    }
+
+    const verses = [...bk.chapters.get(browse.chapter).entries()].sort((a, b) => a[0] - b[0]);
+    body.innerHTML = `
+      <button class="btn" data-back style="max-width:8rem;margin-bottom:0.5rem;">← Back</button>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.5rem;">${escapeHtml(bk.en)} ${browse.chapter}</div>
+        ${verses.map(([vs, text]) => renderVerseResultRow(`${bk.abbr} ${browse.chapter}:${vs}`, text, allVerses().some(x => x.ref === `${bk.abbr} ${browse.chapter}:${vs}`))).join("")}
+      </div>`;
+    body.querySelector("[data-back]").addEventListener("click", () => { browse.chapter = null; renderBrowse(); });
+    wireAddButtons(body);
+  }
+
+  function renderVerseResultRow(ref, text, already) {
+    return `
+      <div class="verse-result" data-ref="${escapeHtml(ref)}">
+        <div class="vr-text">
+          <div class="vr-ref">${escapeHtml(ref)}</div>
+          <div class="vr-body">${escapeHtml(text)}</div>
+        </div>
+        <button data-add="${escapeHtml(ref)}" class="${already ? "added" : ""}">${already ? "Added" : "Add"}</button>
+      </div>`;
+  }
+
+  function wireAddButtons(scope) {
+    scope.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => addVerse(b.dataset.add)));
   }
 
   function addVerse(ref) {
     if (allVerses().some(v => v.ref === ref)) return;
     if (!textFor(ref)) return;
-    customVerses.push({ ref });   // text stays in textCache
+    customVerses.push({ ref });
     saveJSON(CUSTOM_KEY, customVerses);
     const node = document.querySelector(`.verse-result[data-ref="${CSS.escape(ref)}"] button`);
     if (node) { node.textContent = "Added"; node.classList.add("added"); node.removeAttribute("data-add"); }
@@ -954,28 +1153,47 @@
     const current = pickBestVoice(voices);
 
     const bundledCount = Object.keys(bundledTexts).length;
-    const bundleBanner = bundledLoaded ? `
-      <div style="padding:0.6rem 0.75rem;background:#eaf4ec;border:1px solid var(--ok);border-radius:4px;font-size:0.85rem;color:#2c5a3a;margin-bottom:0.75rem;">
-        ✓ Offline mode active — full ESV bundled locally (${bundledCount.toLocaleString()} verses). API key is optional below.
-      </div>` : "";
+    const bundleCard = bundledLoaded
+      ? `
+      <div class="card" style="border-left:3px solid var(--ok);">
+        <div style="font-weight:600;margin-bottom:0.4rem;">ESV text source: <span style="color:var(--ok);">Local bundle ✓</span></div>
+        <div class="hint" style="margin:0;">
+          ${bundledCount.toLocaleString()} verses loaded from <code>esv.json</code> on disk. No network or API key needed for Drill, Verify, Browse, or My List.
+          Bundle stays in the user's browser memory only; <strong>not committed to any public repo</strong> (gitignored under Crossway's license).
+        </div>
+      </div>`
+      : `
+      <div class="card" style="border-left:3px solid var(--no);">
+        <div style="font-weight:600;margin-bottom:0.4rem;">ESV text source: <span style="color:var(--no);">No bundle</span></div>
+        <div class="hint" style="margin:0;">
+          <code>esv.json</code> wasn't found in the app folder. To go fully offline:
+          run <code>python3 build/parse_esv.py</code> from the project root.
+          Until then, you'll need an ESV API token (optional fallback, below).
+        </div>
+      </div>`;
 
     document.getElementById("content").innerHTML = `
-      <div class="card">
-        <div style="font-weight:600;margin-bottom:0.6rem;">ESV text source</div>
-        ${bundleBanner}
-        <input type="password" id="esv-key" placeholder="Paste your ESV API token (optional if bundled)" value="${escapeHtml(settings.esvApiKey || "")}">
-        <div class="hint">
-          Free token: <a href="https://api.esv.org/account/create-application/" target="_blank" style="color:var(--accent);">api.esv.org/account/create-application</a>.
-          Stored in this browser only.
-        </div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
-          <button class="btn primary" id="prefetch-all" style="flex:1;" ${bundledLoaded?"disabled":""}>Fetch all verses</button>
-          <div style="font-size:0.85rem;color:var(--muted);white-space:nowrap;">
-            API-cached: <span id="cache-count">${cached}</span> / ${totalRefs}
+      ${bundleCard}
+
+      <div class="card" style="margin-top:1rem;">
+        <details ${bundledLoaded ? "" : "open"}>
+          <summary style="cursor:pointer;font-weight:600;">ESV API token <span style="color:var(--muted);font-weight:normal;">(${bundledLoaded ? "optional fallback" : "needed without bundle"})</span></summary>
+          <div style="margin-top:0.75rem;">
+            <input type="password" id="esv-key" placeholder="Paste your ESV API token" value="${escapeHtml(settings.esvApiKey || "")}">
+            <div class="hint">
+              Free token from <a href="https://api.esv.org/account/create-application/" target="_blank" style="color:var(--accent);">api.esv.org</a>. Stored in this browser only.
+              Used only if a verse isn't in the local bundle.
+            </div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
+              <button class="btn" id="prefetch-all" style="flex:1;" ${bundledLoaded?"disabled":""}>Fetch all 12-month verses via API</button>
+              <div style="font-size:0.85rem;color:var(--muted);white-space:nowrap;">
+                API-cached: <span id="cache-count">${cached}</span> / ${totalRefs}
+              </div>
+            </div>
+            <div id="prefetch-status" class="hint"></div>
+            <button class="btn" id="clear-cache" style="margin-top:0.6rem;border-color:var(--no);color:var(--no);">Clear API cache</button>
           </div>
-        </div>
-        <div id="prefetch-status" class="hint"></div>
-        <button class="btn" id="clear-cache" style="margin-top:0.6rem;border-color:var(--no);color:var(--no);">Clear API cache</button>
+        </details>
       </div>
 
       <div class="card" style="margin-top:1rem;">
