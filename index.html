@@ -164,7 +164,8 @@
 
   let progress = loadJSON(PROGRESS_KEY, {});
   let customVerses = loadJSON(CUSTOM_KEY, []);     // [{ref}] — no text bundled
-  let textCache = loadJSON(TEXT_KEY, {});          // { ref: text } populated via API
+  let textCache = loadJSON(TEXT_KEY, {});          // { ref: text }
+  let bundledLoaded = false;                       // becomes true after esv.json loads (offline build)
   let settings = loadJSON(SETTINGS_KEY, {
     voiceURI: "", rate: 0.9, pitch: 1.0,
     esvApiKey: "",
@@ -179,7 +180,33 @@
     return [...map.values()];
   };
 
-  const textFor = (ref) => textCache[ref] || null;
+  // In-memory cache of bundled ESV texts (loaded from esv.json once per session).
+  // Kept separate from textCache (persistent API cache) so we don't bloat localStorage.
+  const bundledTexts = {};
+
+  const textFor = (ref) => bundledTexts[ref] || textCache[ref] || null;
+
+  async function loadBundledTexts() {
+    if (bundledLoaded) return true;
+    try {
+      const res = await fetch("esv.json");
+      if (!res.ok) return false;
+      const data = await res.json();
+      const slugToAbbr = Object.fromEntries(data.books.map(b => [b.slug, b.abbr]));
+      for (const v of data.verses) {
+        const abbr = slugToAbbr[v.book];
+        if (!abbr) continue;
+        const ref = `${abbr} ${v.chapter}:${v.verse}`;
+        bundledTexts[ref] = v.text;
+      }
+      bundledLoaded = true;
+      console.log(`[memorize] bundled esv.json loaded (${Object.keys(bundledTexts).length} verses)`);
+      return true;
+    } catch (e) {
+      // Likely no esv.json deployed (public/API-only mode). Silently fall through.
+      return false;
+    }
+  }
 
   const getState = (ref) => progress[ref] || { box: 0, lastReviewed: null };
   const isDue = (ref) => {
@@ -926,22 +953,29 @@
     const en = listEnVoices(voices);
     const current = pickBestVoice(voices);
 
+    const bundledCount = Object.keys(bundledTexts).length;
+    const bundleBanner = bundledLoaded ? `
+      <div style="padding:0.6rem 0.75rem;background:#eaf4ec;border:1px solid var(--ok);border-radius:4px;font-size:0.85rem;color:#2c5a3a;margin-bottom:0.75rem;">
+        ✓ Offline mode active — full ESV bundled locally (${bundledCount.toLocaleString()} verses). API key is optional below.
+      </div>` : "";
+
     document.getElementById("content").innerHTML = `
       <div class="card">
-        <div style="font-weight:600;margin-bottom:0.6rem;">ESV API</div>
-        <input type="password" id="esv-key" placeholder="Paste your ESV API token" value="${escapeHtml(settings.esvApiKey || "")}">
+        <div style="font-weight:600;margin-bottom:0.6rem;">ESV text source</div>
+        ${bundleBanner}
+        <input type="password" id="esv-key" placeholder="Paste your ESV API token (optional if bundled)" value="${escapeHtml(settings.esvApiKey || "")}">
         <div class="hint">
-          Get a free token: <a href="https://api.esv.org/account/create-application/" target="_blank" style="color:var(--accent);">api.esv.org/account/create-application</a>.
-          The token stays in your browser; no server is involved.
+          Free token: <a href="https://api.esv.org/account/create-application/" target="_blank" style="color:var(--accent);">api.esv.org/account/create-application</a>.
+          Stored in this browser only.
         </div>
         <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
-          <button class="btn primary" id="prefetch-all" style="flex:1;">Fetch all verses</button>
+          <button class="btn primary" id="prefetch-all" style="flex:1;" ${bundledLoaded?"disabled":""}>Fetch all verses</button>
           <div style="font-size:0.85rem;color:var(--muted);white-space:nowrap;">
-            Cached: <span id="cache-count">${cached}</span> / ${totalRefs}
+            API-cached: <span id="cache-count">${cached}</span> / ${totalRefs}
           </div>
         </div>
         <div id="prefetch-status" class="hint"></div>
-        <button class="btn" id="clear-cache" style="margin-top:0.6rem;border-color:var(--no);color:var(--no);">Clear cached texts</button>
+        <button class="btn" id="clear-cache" style="margin-top:0.6rem;border-color:var(--no);color:var(--no);">Clear API cache</button>
       </div>
 
       <div class="card" style="margin-top:1rem;">
@@ -1130,7 +1164,9 @@
     }
   });
 
-  setView("drill");
+  // Boot: try to load bundled esv.json first (offline / personal mode).
+  // If absent (public deployment), fall back to API-only mode.
+  loadBundledTexts().finally(() => setView("drill"));
 })();
 </script>
 </body>

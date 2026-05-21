@@ -1,3 +1,7 @@
 .DS_Store
 *.swp
 *.swo
+
+# ESV text is copyrighted by Crossway. Do NOT commit esv.json to a public repo.
+# Generate locally with: python3 build/parse_esv.py
+esv.json
