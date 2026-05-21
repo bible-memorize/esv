@@ -7,7 +7,7 @@ license; if you push this output, make sure the repo is private.
 Input:  raw/09-archive/06-book/Bible/ESV/Esv.txt
         — one verse per line, 31,103 lines, in canonical Protestant order.
 
-Output: app/esv/esv.json
+Output: app/memorize-esv/esv.json
         Same shape as cuv.json:
         { meta, books: [...], verses: [{book, chapter, verse, text}, ...] }
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 ESV_TXT = ROOT / "raw/09-archive/06-book/Bible/ESV/Esv.txt"
-OUT = ROOT / "app/esv/esv.json"
+OUT = ROOT / "app/memorize-esv/esv.json"
 
 # 66-book canonical table: (slug, English name, common abbr, testament)
 # Order matches Protestant canon book numbering 1..66.
