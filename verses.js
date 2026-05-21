@@ -1,11 +1,11 @@
-// River of Life Memorization — verse plan (references only).
+// ESV verse plan (references only).
 // Verse text is NOT bundled. It is fetched at runtime from Crossway's ESV API
 // (https://api.esv.org) and cached in browser localStorage. The user supplies
 // their own free API key via Settings.
 
 window.VERSE_PLAN = {
   meta: {
-    name: "River of Life Memorization",
+    name: "12-Month Memorization Plan",
     note: "ESV text is fetched from api.esv.org at runtime. Set your API key in Settings.",
   },
   months: [
