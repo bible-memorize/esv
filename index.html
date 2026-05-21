@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESV Memorize · River of Life</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --card: #ffffff;
+    --ink: #2a2a2a;
+    --muted: #8a8a8a;
+    --accent: #6b4f3a;
+    --ok: #4a7c59;
+    --no: #a8615a;
+    --line: #e5e0d8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink);
+    line-height: 1.6;
+  }
+  .app { max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem; }
+  header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--line); padding-bottom: 0.75rem; margin-bottom: 1rem;
+  }
+  h1 { font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: 0.04em; }
+  .stats { font-size: 0.85rem; color: var(--muted); }
+  nav {
+    display: flex; gap: 0.4rem; margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line); padding-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+  nav button {
+    background: none; border: none; color: var(--muted); padding: 0.4rem 0.75rem;
+    cursor: pointer; font-size: 0.92rem; font-family: inherit; border-radius: 4px;
+  }
+  nav button.active { color: var(--accent); background: #f0ece4; font-weight: 600; }
+  nav button:hover { color: var(--ink); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    padding: 1.6rem 1.4rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .ref { font-size: 0.92rem; color: var(--accent); font-weight: 600; letter-spacing: 0.08em; margin-bottom: 0.6rem; }
+  .ref .speak { float: right; cursor: pointer; opacity: 0.6; font-size: 1.1rem; user-select: none; }
+  .ref .speak:hover { opacity: 1; }
+  .text {
+    font-size: 1.2rem; line-height: 1.9;
+    font-family: "Georgia", "Charter", "Iowan Old Style", serif;
+    min-height: 6rem;
+  }
+  .text .masked { color: var(--muted); opacity: 0.55; letter-spacing: 0.03em; }
+  .text .revealed { color: var(--ink); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+  button.btn {
+    flex: 1; min-width: 100px; padding: 0.6rem 1rem;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    border-radius: 4px; cursor: pointer; font-size: 0.92rem;
+    font-family: inherit; transition: all 0.15s;
+  }
+  button.btn:hover { background: #f0ece4; }
+  button.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button.btn.primary:hover { background: #5a4230; }
+  button.btn.ok { color: var(--ok); border-color: var(--ok); }
+  button.btn.ok:hover { background: var(--ok); color: white; }
+  button.btn.no { color: var(--no); border-color: var(--no); }
+  button.btn.no:hover { background: var(--no); color: white; }
+  button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .footer {
+    margin-top: 1.5rem; text-align: center;
+    color: var(--muted); font-size: 0.8rem;
+    display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+  }
+  .footer a, .footer label { color: var(--muted); cursor: pointer; text-decoration: underline; }
+  .footer a:hover, .footer label:hover { color: var(--accent); }
+  .footer input[type=file] { display: none; }
+
+  .empty { text-align: center; color: var(--muted); padding: 2.5rem 0; }
+  .box-dist { display: flex; gap: 0.25rem; font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; flex-wrap: wrap; }
+  .box-dist span { background: var(--card); border: 1px solid var(--line); padding: 0.15rem 0.5rem; border-radius: 3px; }
+
+  input[type=text], input[type=password] {
+    width: 100%; padding: 0.55rem 0.75rem; font-size: 0.95rem;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: var(--card); color: var(--ink); font-family: inherit;
+  }
+  input[type=text]:focus, input[type=password]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; line-height: 1.55; }
+  .loading { text-align: center; color: var(--muted); padding: 1.5rem 0; font-style: italic; }
+
+  .verse-result {
+    background: var(--card); border: 1px solid var(--line);
+    padding: 0.7rem 0.9rem; border-radius: 4px; margin-top: 0.5rem;
+    display: flex; gap: 0.75rem; align-items: flex-start;
+  }
+  .verse-result .vr-text { flex: 1; }
+  .verse-result .vr-ref { font-size: 0.78rem; color: var(--accent); font-weight: 600; margin-bottom: 0.2rem; }
+  .verse-result .vr-body { font-size: 0.98rem; line-height: 1.6; font-family: "Georgia", serif; }
+  .verse-result button {
+    align-self: center; padding: 0.3rem 0.7rem;
+    background: var(--card); border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 3px; cursor: pointer; font-size: 0.85rem; font-family: inherit;
+    white-space: nowrap;
+  }
+  .verse-result button:hover { background: var(--accent); color: white; }
+  .verse-result button.added { border-color: var(--ok); color: var(--ok); background: transparent; cursor: default; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>ESV Memorize · River of Life</h1>
+    <div class="stats" id="stats">—</div>
+  </header>
+
+  <nav>
+    <button class="active" data-view="drill">Drill</button>
+    <button data-view="exam">Verify</button>
+    <button data-view="browse">Browse</button>
+    <button data-view="list">My List</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+
+  <div id="content"></div>
+
+  <div class="footer">
+    <a href="#" id="export">Export</a>
+    <label for="import-file">Import</label>
+    <input type="file" id="import-file" accept=".json,application/json">
+    <a href="#" id="reset">Clear progress</a>
+  </div>
+</div>
+
+<script src="verses.js"></script>
+<script>
+(() => {
+  // ============================================================================
+  // Constants
+  // ============================================================================
+  const PROGRESS_KEY = "esv-memorize-progress-v1";
+  const CUSTOM_KEY   = "esv-memorize-custom-v1";
+  const SETTINGS_KEY = "esv-memorize-settings-v1";
+  const MONTH_KEY    = "esv-memorize-month-v1";
+  const TEXT_KEY     = "esv-memorize-text-cache-v1";   // { "Eph 6:12": "...", ... }
+  const INTERVALS = [0, 1, 3, 7, 15];
+  const MAX_BOX = 4;
+
+  const ESV_API = "https://api.esv.org/v3/passage/text/";
+
+  // ============================================================================
+  // Storage
+  // ============================================================================
+  const loadJSON = (key, fallback) => {
+    try { return JSON.parse(localStorage.getItem(key)) || fallback; }
+    catch { return fallback; }
+  };
+  const saveJSON = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+
+  let progress = loadJSON(PROGRESS_KEY, {});
+  let customVerses = loadJSON(CUSTOM_KEY, []);     // [{ref}] — no text bundled
+  let textCache = loadJSON(TEXT_KEY, {});          // { ref: text } populated via API
+  let settings = loadJSON(SETTINGS_KEY, {
+    voiceURI: "", rate: 0.9, pitch: 1.0,
+    esvApiKey: "",
+    openai: { enabled: false, apiKey: "", voice: "alloy", model: "gpt-4o-mini-tts" },
+  });
+  if (!settings.openai) settings.openai = { enabled: false, apiKey: "", voice: "alloy", model: "gpt-4o-mini-tts" };
+
+  const allVerses = () => {
+    const map = new Map();
+    (window.VERSES || []).forEach(v => map.set(v.ref, v));
+    customVerses.forEach(v => map.set(v.ref, v));
+    return [...map.values()];
+  };
+
+  const textFor = (ref) => textCache[ref] || null;
+
+  const getState = (ref) => progress[ref] || { box: 0, lastReviewed: null };
+  const isDue = (ref) => {
+    const s = getState(ref);
+    if (!s.lastReviewed) return true;
+    const days = (Date.now() - new Date(s.lastReviewed).getTime()) / 86400000;
+    return days >= INTERVALS[s.box];
+  };
+
+  // Month filter ---------------------------------------------------------------
+  const monthsList = () => window.VERSE_PLAN?.months || [];
+  const monthHasVerses = (m) => (monthsList().find(x => x.month === m)?.refs.length || 0) > 0;
+  function getActiveMonth() {
+    const saved = localStorage.getItem(MONTH_KEY);
+    if (saved === "all") return "all";
+    if (saved && /^\d+$/.test(saved)) return parseInt(saved, 10);
+    const m = new Date().getMonth() + 1;
+    return monthHasVerses(m) ? m : "all";
+  }
+  function setActiveMonth(m) { localStorage.setItem(MONTH_KEY, String(m)); }
+  function activeVerses() {
+    const m = getActiveMonth();
+    const all = allVerses();
+    return m === "all" ? all : all.filter(v => v.month === m);
+  }
+
+  // ============================================================================
+  // ESV API client
+  // ============================================================================
+  async function fetchVerse(ref) {
+    if (textCache[ref]) return textCache[ref];
+    if (!settings.esvApiKey) throw new Error("No ESV API key set. Add one in Settings.");
+    const url = new URL(ESV_API);
+    url.searchParams.set("q", ref);
+    url.searchParams.set("include-passage-references", "false");
+    url.searchParams.set("include-verse-numbers", "false");
+    url.searchParams.set("include-footnotes", "false");
+    url.searchParams.set("include-headings", "false");
+    url.searchParams.set("include-short-copyright", "false");
+    url.searchParams.set("include-first-verse-numbers", "false");
+    const res = await fetch(url, {
+      headers: { "Authorization": `Token ${settings.esvApiKey}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`ESV API ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = (data.passages?.[0] || "").trim();
+    if (!text) throw new Error(`No text returned for "${ref}"`);
+    textCache[ref] = text;
+    saveJSON(TEXT_KEY, textCache);
+    return text;
+  }
+
+  async function ensureTextsForRefs(refs, onProgress) {
+    const missing = refs.filter(r => !textCache[r]);
+    if (!missing.length) return { fetched: 0, total: 0, errors: [] };
+    if (!settings.esvApiKey) {
+      throw new Error("No ESV API key set. Add one in Settings to fetch verse text.");
+    }
+    let fetched = 0;
+    const errors = [];
+    for (const ref of missing) {
+      try {
+        await fetchVerse(ref);
+        fetched++;
+        onProgress?.(fetched, missing.length, ref);
+      } catch (e) {
+        errors.push({ ref, error: e.message });
+      }
+    }
+    return { fetched, total: missing.length, errors };
+  }
+
+  // ============================================================================
+  // Word utilities
+  // ============================================================================
+  // Tokenize preserving punctuation. Words = runs of letters/digits/apostrophes.
+  function splitWords(text) {
+    return text.match(/[A-Za-z0-9']+|[^A-Za-z0-9'\s]+|\s+/g) || [];
+  }
+  function isWord(token) { return /^[A-Za-z0-9']/.test(token); }
+
+  // For masking & visible-counts
+  function wordTokens(text) {
+    const tokens = splitWords(text);
+    const words = [];
+    tokens.forEach((t, i) => { if (isWord(t)) words.push({ token: t, tokenIdx: i }); });
+    return { tokens, words };
+  }
+
+  function defaultRevealedWords(text) {
+    const { words } = wordTokens(text);
+    const set = new Set();
+    words.forEach((_, i) => { if (i % 3 === 0) set.add(i); });
+    return set;
+  }
+
+  function renderMasked(text, revealed) {
+    const { tokens, words } = wordTokens(text);
+    // Map tokenIdx → wordIdx for visibility lookup
+    const tokenIdxToWordIdx = new Map();
+    words.forEach((w, i) => tokenIdxToWordIdx.set(w.tokenIdx, i));
+
+    return tokens.map((t, i) => {
+      if (!isWord(t)) return escapeHtml(t);
+      const wordIdx = tokenIdxToWordIdx.get(i);
+      if (revealed.has(wordIdx)) return `<span class="revealed">${escapeHtml(t)}</span>`;
+      const masked = t.replace(/[A-Za-z0-9]/g, "_");
+      return `<span class="masked">${escapeHtml(masked)}</span>`;
+    }).join("");
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  }
+
+  // Word normalization for comparison: lowercase, drop everything except letters+digits+apostrophes
+  function normalizeWordList(s) {
+    return (s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9'\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  // ============================================================================
+  // LCS-based word alignment
+  // ============================================================================
+  function lcsAlign(a, b) {
+    const n = a.length, m = b.length;
+    const dp = Array.from({length: n+1}, () => new Int32Array(m+1));
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < m; j++) {
+        if (a[i] === b[j]) dp[i+1][j+1] = dp[i][j] + 1;
+        else dp[i+1][j+1] = Math.max(dp[i][j+1], dp[i+1][j]);
+      }
+    }
+    const ops = [];
+    let i = n, j = m;
+    while (i > 0 && j > 0) {
+      if (a[i-1] === b[j-1]) { ops.push({type:"match", w:a[i-1]}); i--; j--; }
+      else if (dp[i-1][j] >= dp[i][j-1]) { ops.push({type:"missing", w:a[i-1]}); i--; }
+      else { ops.push({type:"extra", w:b[j-1]}); j--; }
+    }
+    while (i > 0) { ops.push({type:"missing", w:a[i-1]}); i--; }
+    while (j > 0) { ops.push({type:"extra", w:b[j-1]}); j--; }
+    return ops.reverse();
+  }
+
+  function compareVerse(canonical, spoken) {
+    const a = normalizeWordList(canonical);
+    const b = normalizeWordList(spoken);
+    const ops = lcsAlign(a, b);
+    const statuses = [];
+    for (const op of ops) {
+      if (op.type === "match") statuses.push("match");
+      else if (op.type === "missing") statuses.push("miss");
+    }
+    const matched = statuses.filter(s => s === "match").length;
+    const extras = ops.filter(o => o.type === "extra").map(o => o.w).join(" ");
+    return {
+      total: a.length,
+      matched,
+      accuracy: a.length ? matched / a.length : 0,
+      statuses, canonWords: a, extras,
+    };
+  }
+
+  // ============================================================================
+  // Audio: browser TTS + OpenAI cloud TTS
+  // ============================================================================
+  let _voicesReady = null;
+  function voicesReady() {
+    if (_voicesReady) return _voicesReady;
+    _voicesReady = new Promise(resolve => {
+      const initial = speechSynthesis.getVoices();
+      if (initial.length) return resolve(initial);
+      speechSynthesis.addEventListener("voiceschanged", () => resolve(speechSynthesis.getVoices()), { once: true });
+      setTimeout(() => resolve(speechSynthesis.getVoices()), 1500);
+    });
+    return _voicesReady;
+  }
+
+  function listEnVoices(voices) {
+    return voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("en"));
+  }
+
+  function pickBestVoice(voices) {
+    if (settings.voiceURI) {
+      const saved = voices.find(v => v.voiceURI === settings.voiceURI);
+      if (saved && saved.lang?.toLowerCase().startsWith("en")) return saved;
+    }
+    const HQ = /premium|enhanced|neural|wavenet|natural/i;
+    const en = voices.filter(v => v.lang?.toLowerCase().startsWith("en"));
+    return en.find(v => HQ.test(v.name)) || en[0] || null;
+  }
+
+  async function speakViaBrowser(text) {
+    if (!window.speechSynthesis) return alert("This browser does not support speech synthesis.");
+    speechSynthesis.cancel();
+    const voices = await voicesReady();
+    const pick = pickBestVoice(voices);
+    const u = new SpeechSynthesisUtterance(text);
+    if (pick) u.voice = pick;
+    u.lang = pick?.lang || "en-US";
+    u.rate = settings.rate;
+    u.pitch = settings.pitch;
+    speechSynthesis.speak(u);
+  }
+
+  const openaiCache = new Map();
+  async function speakViaOpenAI(text) {
+    const k = `${settings.openai.voice}|${settings.openai.model}|${settings.rate}|${text}`;
+    let url = openaiCache.get(k);
+    if (!url) {
+      const body = {
+        model: settings.openai.model, input: text, voice: settings.openai.voice,
+        speed: Math.max(0.25, Math.min(4.0, settings.rate)), response_format: "mp3",
+      };
+      if (settings.openai.model === "gpt-4o-mini-tts") {
+        body.instructions = "Read this Bible verse clearly and reverently in standard American English.";
+      }
+      const res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${settings.openai.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { alert(`OpenAI TTS failed (${res.status}): ${(await res.text()).slice(0,200)}`); return; }
+      url = URL.createObjectURL(await res.blob());
+      openaiCache.set(k, url);
+    }
+    if (window._curAudio) { try { window._curAudio.pause(); } catch {} }
+    const audio = new Audio(url); window._curAudio = audio;
+    audio.play().catch(e => alert("Playback failed: " + e.message));
+  }
+
+  async function speak(text) {
+    if (!text) return;
+    if (settings.openai?.enabled && settings.openai?.apiKey) return speakViaOpenAI(text);
+    return speakViaBrowser(text);
+  }
+
+  // ============================================================================
+  // Stats / box dist / month bar
+  // ============================================================================
+  function updateStats() {
+    const scope = activeVerses();
+    const total = scope.length;
+    const due = scope.filter(v => isDue(v.ref)).length;
+    const mastered = scope.filter(v => getState(v.ref).box === MAX_BOX).length;
+    const m = getActiveMonth();
+    const prefix = m === "all" ? "" : `Mo. ${m} · `;
+    document.getElementById("stats").textContent = `${prefix}Due ${due} · Total ${total} · Mastered ${mastered}`;
+  }
+
+  function renderBoxDist() {
+    const counts = [0,0,0,0,0];
+    activeVerses().forEach(v => counts[getState(v.ref).box]++);
+    return `<div class="box-dist">${counts.map((c,i) => `<span>Box ${i}: ${c}</span>`).join("")}</div>`;
+  }
+
+  function renderMonthBar() {
+    const cur = getActiveMonth();
+    const opts = monthsList().map(m => {
+      const sel = cur === m.month ? "selected" : "";
+      const cnt = m.refs.length;
+      return `<option value="${m.month}" ${sel}>${m.month}. ${escapeHtml(m.theme)} (${cnt})</option>`;
+    }).join("");
+    return `
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem;font-size:0.9rem;">
+        <span style="color:var(--muted);">📅</span>
+        <select id="month-select" style="flex:1;min-width:0;padding:0.35rem;border:1px solid var(--line);border-radius:3px;background:var(--card);color:var(--ink);font-family:inherit;font-size:0.9rem;">
+          <option value="all" ${cur==="all"?"selected":""}>All months</option>
+          ${opts}
+        </select>
+      </div>`;
+  }
+  function wireMonthBar() {
+    const sel = document.getElementById("month-select");
+    if (!sel) return;
+    sel.addEventListener("change", () => {
+      setActiveMonth(sel.value === "all" ? "all" : parseInt(sel.value, 10));
+      setView(currentView);
+    });
+  }
+
+  // ============================================================================
+  // Drill view
+  // ============================================================================
+  let drill = { current: null, queue: [], revealed: new Set(), fullyShown: false };
+
+  function buildDrillQueue() {
+    // Only consider verses we have text for. Verses without cached text show in a separate prompt.
+    const due = activeVerses().filter(v => isDue(v.ref) && textFor(v.ref));
+    due.sort((a, b) => {
+      const sa = getState(a.ref), sb = getState(b.ref);
+      if (!sa.lastReviewed && !sb.lastReviewed) return 0;
+      if (!sa.lastReviewed) return -1;
+      if (!sb.lastReviewed) return 1;
+      return new Date(sa.lastReviewed) - new Date(sb.lastReviewed);
+    });
+    return due;
+  }
+
+  function nextDrillCard() {
+    drill.queue = buildDrillQueue();
+    drill.current = drill.queue[0] || null;
+    drill.fullyShown = false;
+    drill.revealed = drill.current ? defaultRevealedWords(textFor(drill.current.ref)) : new Set();
+    renderDrill();
+  }
+
+  function renderTextNotLoadedNotice() {
+    const missing = activeVerses().filter(v => !textFor(v.ref)).length;
+    if (!settings.esvApiKey) {
+      return `
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <strong>ESV API key required</strong>
+          <div class="hint">No verse text loaded yet. Go to <strong>Settings</strong> to enter your free ESV API key, then return here.</div>
+        </div>`;
+    }
+    if (missing > 0) {
+      return `
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <strong>${missing} verse${missing > 1 ? "s" : ""} not yet downloaded</strong>
+          <div class="hint">Go to <strong>Settings</strong> and tap <em>Fetch all verses</em>.</div>
+        </div>`;
+    }
+    return "";
+  }
+
+  function renderDrill() {
+    const content = document.getElementById("content");
+    updateStats();
+
+    if (allVerses().length === 0) {
+      content.innerHTML = `<div class="card"><div class="empty">No verses yet. Switch to <strong>Browse</strong> to add some.</div></div>`;
+      return;
+    }
+
+    const notice = renderTextNotLoadedNotice();
+
+    if (activeVerses().length === 0) {
+      content.innerHTML = renderMonthBar() + notice + `
+        <div class="card"><div class="empty">No verses for month ${getActiveMonth()}.</div></div>`;
+      wireMonthBar();
+      return;
+    }
+
+    if (!drill.current) {
+      content.innerHTML = renderMonthBar() + notice + `
+        <div class="card">
+          <div class="empty">
+            <div style="font-size:1.15rem;margin-bottom:0.5rem;">All done for now ✓</div>
+            <div>Next review scheduled by the Leitner intervals.</div>
+          </div>
+          ${renderBoxDist()}
+        </div>`;
+      wireMonthBar();
+      return;
+    }
+
+    const text = textFor(drill.current.ref);
+    const masked = renderMasked(text, drill.revealed);
+    const box = getState(drill.current.ref).box;
+    const themeLine = drill.current.month
+      ? `<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem;">Month ${drill.current.month} · ${escapeHtml(drill.current.theme || "")}</div>`
+      : "";
+
+    content.innerHTML = renderMonthBar() + `
+      <div class="card">
+        <div class="ref">
+          <span class="speak" data-action="speak" title="Read aloud">🔊</span>
+          ${escapeHtml(drill.current.ref)} · Box ${box}
+        </div>
+        ${themeLine}
+        <div class="text">${masked}</div>
+        <div class="controls">
+          ${drill.fullyShown
+            ? `<button class="btn ok" data-action="ok">Got it</button>
+               <button class="btn no" data-action="no">Forgot</button>`
+            : `<button class="btn" data-action="hint">Hint</button>
+               <button class="btn primary" data-action="show">Show answer</button>
+               <button class="btn" data-action="skip">Skip</button>`}
+        </div>
+        ${renderBoxDist()}
+      </div>`;
+
+    wireMonthBar();
+    content.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => handleDrill(b.dataset.action)));
+  }
+
+  function handleDrill(action) {
+    const cur = drill.current;
+    if (!cur && action !== "speak") return;
+    if (action === "speak") return speak(textFor(cur.ref));
+    const text = textFor(cur.ref);
+    const { words } = wordTokens(text);
+    if (action === "hint") {
+      const hidden = words.map((_, i) => i).filter(i => !drill.revealed.has(i));
+      if (hidden.length) drill.revealed.add(hidden[Math.floor(Math.random() * hidden.length)]);
+      renderDrill();
+    } else if (action === "show") {
+      drill.revealed = new Set(words.map((_, i) => i));
+      drill.fullyShown = true;
+      renderDrill();
+    } else if (action === "skip") {
+      drill.queue.shift();
+      drill.current = drill.queue[0] || null;
+      drill.fullyShown = false;
+      drill.revealed = drill.current ? defaultRevealedWords(textFor(drill.current.ref)) : new Set();
+      renderDrill();
+    } else if (action === "ok") {
+      const s = getState(cur.ref);
+      progress[cur.ref] = { box: Math.min(s.box + 1, MAX_BOX), lastReviewed: new Date().toISOString() };
+      saveJSON(PROGRESS_KEY, progress); nextDrillCard();
+    } else if (action === "no") {
+      progress[cur.ref] = { box: 0, lastReviewed: new Date().toISOString() };
+      saveJSON(PROGRESS_KEY, progress); nextDrillCard();
+    }
+  }
+
+  // ============================================================================
+  // Verify view (speech recognition)
+  // ============================================================================
+  const SR_CLASS = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let exam = { current: null, phase: "ready", finalText: "", interimText: "", result: null };
+  let _recognition = null;
+
+  function abortRecognition() {
+    if (_recognition) {
+      try { _recognition.onend = null; _recognition.onresult = null; _recognition.onerror = null; _recognition.abort(); } catch {}
+      _recognition = null;
+    }
+  }
+
+  function nextExamCard() {
+    abortRecognition();
+    const queue = buildDrillQueue();
+    exam.current = queue[0] || null;
+    exam.phase = "ready"; exam.finalText = ""; exam.interimText = ""; exam.result = null;
+    renderExam();
+  }
+
+  function renderExam() {
+    const content = document.getElementById("content");
+    updateStats();
+
+    if (!SR_CLASS) {
+      content.innerHTML = `<div class="card"><div class="empty">
+        Speech recognition is not supported in this browser. Use Chrome, Safari (iOS 14.5+ / macOS 14+), or Edge.
+      </div></div>`;
+      return;
+    }
+    if (allVerses().length === 0) {
+      content.innerHTML = `<div class="card"><div class="empty">No verses yet. Switch to <strong>Browse</strong>.</div></div>`;
+      return;
+    }
+    const notice = renderTextNotLoadedNotice();
+    if (activeVerses().length === 0) {
+      content.innerHTML = renderMonthBar() + notice + `<div class="card"><div class="empty">No verses for month ${getActiveMonth()}.</div></div>`;
+      wireMonthBar(); return;
+    }
+    if (!exam.current) {
+      content.innerHTML = renderMonthBar() + notice + `<div class="card"><div class="empty">
+        <div style="font-size:1.15rem;margin-bottom:0.5rem;">All done for now ✓</div>
+        <div>Next review scheduled by the Leitner intervals.</div>
+      </div></div>`;
+      wireMonthBar(); return;
+    }
+
+    const ref = exam.current.ref;
+    const box = getState(ref).box;
+    const text = textFor(ref);
+    const themeLine = exam.current.month
+      ? `<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Month ${exam.current.month} · ${escapeHtml(exam.current.theme || "")}</div>`
+      : "";
+
+    if (exam.phase === "ready") {
+      // Show first 3 words as the starter hint
+      const words = normalizeWordList(text);
+      const hint = words.slice(0, 3).join(" ");
+      content.innerHTML = renderMonthBar() + `
+        <div class="card">
+          <div class="ref">${escapeHtml(ref)} · Box ${box}</div>
+          ${themeLine}
+          <div class="text" style="text-align:center;padding:1.5rem 0 0.5rem;font-size:1.3rem;">
+            “${escapeHtml(hint)}…”
+          </div>
+          <div style="text-align:center;color:var(--muted);font-size:0.85rem;margin-bottom:1.25rem;">
+            Recite the verse from memory
+          </div>
+          <div class="controls">
+            <button class="btn" data-action="preview">💭 Show verse</button>
+            <button class="btn primary" data-action="start">🎤 Start recording</button>
+            <button class="btn" data-action="skip">Skip</button>
+          </div>
+        </div>`;
+    } else if (exam.phase === "preview") {
+      content.innerHTML = renderMonthBar() + `
+        <div class="card">
+          <div class="ref">${escapeHtml(ref)} · Box ${box}</div>
+          ${themeLine}
+          <div class="text">${escapeHtml(text)}</div>
+          <div class="controls">
+            <button class="btn primary" data-action="start">🎤 Start recording</button>
+            <button class="btn" data-action="back">Back</button>
+          </div>
+        </div>`;
+    } else if (exam.phase === "listening") {
+      const live = exam.finalText + exam.interimText;
+      content.innerHTML = renderMonthBar() + `
+        <div class="card">
+          <div class="ref">${escapeHtml(ref)} · Box ${box}</div>
+          ${themeLine}
+          <div class="text" id="exam-live" style="font-size:1.05rem;color:var(--muted);min-height:6rem;">
+            ${live ? escapeHtml(live) : "🎙️ Listening…"}
+          </div>
+          <div class="controls">
+            <button class="btn no" data-action="stop">🛑 Done</button>
+          </div>
+        </div>`;
+    } else if (exam.phase === "result") {
+      const r = exam.result;
+      const pct = Math.round(r.accuracy * 100);
+      const passed = pct >= 80;
+      const diff = r.canonWords.map((w, i) =>
+        `<span style="color:${r.statuses[i]==='match' ? 'var(--ok)' : 'var(--no)'};font-weight:${r.statuses[i]==='match'?'normal':'600'};">${escapeHtml(w)}</span>`
+      ).join(" ");
+      content.innerHTML = renderMonthBar() + `
+        <div class="card">
+          <div class="ref">${escapeHtml(ref)} · Box ${box}</div>
+          ${themeLine}
+          <div style="font-size:1.3rem;margin:0.75rem 0;text-align:center;color:${passed?'var(--ok)':'var(--no)'};">
+            ${passed ? '✓' : '✗'} ${r.matched} / ${r.total} words correct (${pct}%)
+          </div>
+          <div class="text" style="line-height:2;">${diff}</div>
+          <div style="margin-top:0.75rem;padding:0.75rem;background:#f7f4ed;border-radius:4px;font-size:0.9rem;color:var(--muted);line-height:1.6;">
+            <div><strong style="color:var(--ink);">Verse:</strong> ${escapeHtml(text)}</div>
+            <div style="margin-top:0.35rem;"><strong style="color:var(--ink);">You said:</strong> ${escapeHtml(exam.finalText) || "<i>(no transcript)</i>"}</div>
+            ${r.extras ? `<div style="margin-top:0.35rem;color:var(--no);"><strong>Extra words:</strong> ${escapeHtml(r.extras)}</div>` : ""}
+          </div>
+          <div class="controls" style="margin-top:1rem;">
+            <button class="btn ok" data-action="pass">Pass</button>
+            <button class="btn no" data-action="fail">Fail</button>
+            <button class="btn" data-action="retry">Retry</button>
+          </div>
+        </div>`;
+    }
+    wireMonthBar();
+    content.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => handleExam(b.dataset.action)));
+  }
+
+  function handleExam(action) {
+    if (action === "preview") { exam.phase = "preview"; renderExam(); }
+    else if (action === "back") { exam.phase = "ready"; renderExam(); }
+    else if (action === "start") startExamListening();
+    else if (action === "stop") { if (_recognition) { try { _recognition.stop(); } catch {} } else finalizeExamListening(); }
+    else if (action === "skip") {
+      const q = buildDrillQueue().filter(v => v.ref !== exam.current.ref);
+      exam.current = q[0] || null;
+      exam.phase = "ready"; exam.finalText = ""; exam.interimText = ""; exam.result = null;
+      renderExam();
+    } else if (action === "pass") {
+      const s = getState(exam.current.ref);
+      progress[exam.current.ref] = { box: Math.min(s.box + 1, MAX_BOX), lastReviewed: new Date().toISOString() };
+      saveJSON(PROGRESS_KEY, progress); nextExamCard();
+    } else if (action === "fail") {
+      progress[exam.current.ref] = { box: 0, lastReviewed: new Date().toISOString() };
+      saveJSON(PROGRESS_KEY, progress); nextExamCard();
+    } else if (action === "retry") {
+      exam.phase = "ready"; exam.finalText = ""; exam.interimText = ""; exam.result = null;
+      renderExam();
+    }
+  }
+
+  function startExamListening() {
+    if (!SR_CLASS) return;
+    exam.finalText = ""; exam.interimText = ""; exam.phase = "listening";
+    renderExam();
+    const rec = new SR_CLASS();
+    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = (e) => {
+      let final = "", interim = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      exam.finalText = final; exam.interimText = interim;
+      const live = document.getElementById("exam-live");
+      if (live) live.textContent = (final + interim) || "🎙️ Listening…";
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed") alert("Microphone access denied. Please allow it in your browser settings.");
+      else if (e.error !== "aborted" && e.error !== "no-speech") alert("Speech recognition error: " + e.error);
+      abortRecognition(); exam.phase = "ready"; renderExam();
+    };
+    rec.onend = () => finalizeExamListening();
+    try { rec.start(); _recognition = rec; }
+    catch (err) { alert("Cannot start recognition: " + err.message); exam.phase = "ready"; renderExam(); }
+  }
+
+  function finalizeExamListening() {
+    if (exam.phase !== "listening") return;
+    _recognition = null;
+    exam.result = compareVerse(textFor(exam.current.ref), exam.finalText);
+    exam.phase = "result";
+    renderExam();
+  }
+
+  // ============================================================================
+  // Browse view (reference input → ESV API)
+  // ============================================================================
+  let browse = { lastInput: "", lastResult: null, fetching: false };
+
+  function renderBrowse() {
+    updateStats();
+    const inList = (ref) => allVerses().some(v => v.ref === ref);
+    document.getElementById("content").innerHTML = `
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.5rem;">Add a verse</div>
+        <input type="text" id="browse-input" placeholder="e.g. John 3:16  or  Romans 8:28-30">
+        <div class="hint">Enter any ESV reference. The app fetches the text from api.esv.org and adds it to your list.</div>
+        <div id="browse-result" style="margin-top:0.75rem;"></div>
+      </div>`;
+
+    const input = document.getElementById("browse-input");
+    input.focus();
+    let timer;
+    input.addEventListener("input", (e) => {
+      clearTimeout(timer);
+      const q = e.target.value.trim();
+      const r = document.getElementById("browse-result");
+      if (q.length < 3) { r.innerHTML = ""; return; }
+      timer = setTimeout(async () => {
+        if (!settings.esvApiKey) { r.innerHTML = `<div class="hint">Add your ESV API key in Settings first.</div>`; return; }
+        r.innerHTML = `<div class="loading">Fetching from ESV…</div>`;
+        try {
+          const text = await fetchVerse(q);
+          const ref = q;
+          const already = inList(ref);
+          r.innerHTML = `
+            <div class="verse-result" data-ref="${escapeHtml(ref)}">
+              <div class="vr-text">
+                <div class="vr-ref">${escapeHtml(ref)}</div>
+                <div class="vr-body">${escapeHtml(text)}</div>
+              </div>
+              <button data-add="${escapeHtml(ref)}" class="${already?"added":""}">${already ? "Added" : "Add"}</button>
+            </div>`;
+          r.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => addVerse(b.dataset.add)));
+        } catch (err) {
+          r.innerHTML = `<div class="hint" style="color:var(--no);">Error: ${escapeHtml(err.message)}</div>`;
+        }
+      }, 400);
+    });
+  }
+
+  function addVerse(ref) {
+    if (allVerses().some(v => v.ref === ref)) return;
+    if (!textFor(ref)) return;
+    customVerses.push({ ref });   // text stays in textCache
+    saveJSON(CUSTOM_KEY, customVerses);
+    const node = document.querySelector(`.verse-result[data-ref="${CSS.escape(ref)}"] button`);
+    if (node) { node.textContent = "Added"; node.classList.add("added"); node.removeAttribute("data-add"); }
+    updateStats();
+  }
+
+  // ============================================================================
+  // My-list view
+  // ============================================================================
+  function renderList() {
+    updateStats();
+    const verses = allVerses();
+    const isCustom = (ref) => customVerses.some(v => v.ref === ref);
+    if (!verses.length) {
+      document.getElementById("content").innerHTML = `<div class="card"><div class="empty">No verses yet.</div></div>`;
+      return;
+    }
+    const groups = new Map();
+    monthsList().forEach(m => groups.set(m.month, { theme: m.theme, verses: [] }));
+    groups.set("other", { theme: "Custom / Other", verses: [] });
+    verses.forEach(v => {
+      const key = (v.month && groups.has(v.month)) ? v.month : "other";
+      groups.get(key).verses.push(v);
+    });
+
+    const renderCard = (v) => {
+      const box = getState(v.ref).box;
+      const due = isDue(v.ref) ? "Due" : "—";
+      const text = textFor(v.ref) || "<i>(not downloaded)</i>";
+      return `
+        <div class="verse-result" data-ref="${escapeHtml(v.ref)}">
+          <div class="vr-text">
+            <div class="vr-ref">${escapeHtml(v.ref)} · Box ${box} · ${due}</div>
+            <div class="vr-body">${textFor(v.ref) ? escapeHtml(text) : text}</div>
+          </div>
+          ${isCustom(v.ref)
+            ? `<button data-remove="${escapeHtml(v.ref)}" style="border-color:var(--no);color:var(--no);">Remove</button>`
+            : `<span style="color:var(--muted);font-size:0.78rem;">seed</span>`}
+        </div>`;
+    };
+
+    const sections = [];
+    for (const [k, g] of groups) {
+      if (!g.verses.length) continue;
+      const head = k === "other" ? g.theme : `Month ${k} — ${escapeHtml(g.theme)}`;
+      sections.push(`
+        <div style="margin-top:1.1rem;padding-top:0.6rem;border-top:1px solid var(--line);font-weight:600;color:var(--accent);">
+          ${head} <span style="font-weight:normal;color:var(--muted);font-size:0.82rem;">(${g.verses.length})</span>
+        </div>
+        ${g.verses.map(renderCard).join("")}`);
+    }
+
+    document.getElementById("content").innerHTML = `
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.4rem;">My list (${verses.length})</div>
+        <div style="font-size:0.85rem;color:var(--muted);margin-bottom:0.4rem;">${escapeHtml(window.VERSE_PLAN?.meta?.name || "")}</div>
+        ${sections.join("")}
+      </div>`;
+
+    document.querySelectorAll("[data-remove]").forEach(b => {
+      b.addEventListener("click", () => {
+        const ref = b.dataset.remove;
+        customVerses = customVerses.filter(v => v.ref !== ref);
+        saveJSON(CUSTOM_KEY, customVerses);
+        delete progress[ref];
+        saveJSON(PROGRESS_KEY, progress);
+        renderList();
+      });
+    });
+  }
+
+  // ============================================================================
+  // Settings view
+  // ============================================================================
+  async function renderSettings() {
+    updateStats();
+    const cached = Object.keys(textCache).length;
+    const totalRefs = allVerses().length;
+    const voices = await voicesReady();
+    const en = listEnVoices(voices);
+    const current = pickBestVoice(voices);
+
+    document.getElementById("content").innerHTML = `
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:0.6rem;">ESV API</div>
+        <input type="password" id="esv-key" placeholder="Paste your ESV API token" value="${escapeHtml(settings.esvApiKey || "")}">
+        <div class="hint">
+          Get a free token: <a href="https://api.esv.org/account/create-application/" target="_blank" style="color:var(--accent);">api.esv.org/account/create-application</a>.
+          The token stays in your browser; no server is involved.
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
+          <button class="btn primary" id="prefetch-all" style="flex:1;">Fetch all verses</button>
+          <div style="font-size:0.85rem;color:var(--muted);white-space:nowrap;">
+            Cached: <span id="cache-count">${cached}</span> / ${totalRefs}
+          </div>
+        </div>
+        <div id="prefetch-status" class="hint"></div>
+        <button class="btn" id="clear-cache" style="margin-top:0.6rem;border-color:var(--no);color:var(--no);">Clear cached texts</button>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div style="font-weight:600;margin-bottom:0.6rem;">Browser voice</div>
+        <label style="font-size:0.85rem;color:var(--muted);">English voice (${en.length} available)</label>
+        <select id="voice-select" style="width:100%;padding:0.5rem;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);font-family:inherit;">
+          ${en.map(v => `<option value="${escapeHtml(v.voiceURI)}" ${current && v.voiceURI===current.voiceURI?"selected":""}>${escapeHtml(v.name)} — ${escapeHtml(v.lang)}${v.localService?"":" (cloud)"}</option>`).join("")}
+        </select>
+        <div style="display:flex;gap:1rem;margin-top:0.75rem;">
+          <div style="flex:1;">
+            <label style="font-size:0.85rem;color:var(--muted);">Rate <span id="rate-val">${settings.rate.toFixed(2)}</span></label>
+            <input type="range" id="rate-slider" min="0.5" max="1.5" step="0.05" value="${settings.rate}" style="width:100%;">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:0.85rem;color:var(--muted);">Pitch <span id="pitch-val">${settings.pitch.toFixed(2)}</span></label>
+            <input type="range" id="pitch-slider" min="0.5" max="1.5" step="0.05" value="${settings.pitch}" style="width:100%;">
+          </div>
+        </div>
+        <div class="controls" style="margin-top:0.75rem;">
+          <button class="btn primary" id="test-speak">🔊 Test</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+          <div style="font-weight:600;">OpenAI cloud TTS (optional)</div>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;">
+            <input type="checkbox" id="openai-enabled" ${settings.openai.enabled?"checked":""}> Enable
+          </label>
+        </div>
+        <div class="hint">When enabled, 🔊 uses OpenAI TTS (more natural). Costs ~$15 per 1M chars on tts-1.</div>
+        <input type="password" id="openai-key" placeholder="sk-..." value="${escapeHtml(settings.openai.apiKey)}" style="margin-top:0.5rem;">
+        <div class="hint">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent);">platform.openai.com/api-keys</a>.</div>
+        <div style="display:flex;gap:0.6rem;margin-top:0.6rem;">
+          <div style="flex:1;">
+            <label style="font-size:0.85rem;color:var(--muted);">Voice</label>
+            <select id="openai-voice" style="width:100%;padding:0.45rem;border:1px solid var(--line);border-radius:4px;background:var(--card);">
+              ${[["alloy","alloy"],["echo","echo (M)"],["fable","fable (M, UK)"],["onyx","onyx (M, deep)"],["nova","nova (F)"],["shimmer","shimmer (F)"]]
+                .map(([v,l]) => `<option value="${v}" ${settings.openai.voice===v?"selected":""}>${l}</option>`).join("")}
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:0.85rem;color:var(--muted);">Model</label>
+            <select id="openai-model" style="width:100%;padding:0.45rem;border:1px solid var(--line);border-radius:4px;background:var(--card);">
+              ${[["gpt-4o-mini-tts","gpt-4o-mini-tts (best)"],["tts-1-hd","tts-1-hd"],["tts-1","tts-1 (fast)"]]
+                .map(([v,l]) => `<option value="${v}" ${settings.openai.model===v?"selected":""}>${l}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="controls" style="margin-top:0.6rem;">
+          <button class="btn primary" id="test-openai" ${settings.openai.apiKey?"":"disabled"}>🔊 Test OpenAI</button>
+        </div>
+      </div>`;
+
+    // Wire ESV key
+    const esvInput = document.getElementById("esv-key");
+    esvInput.addEventListener("input", () => {
+      settings.esvApiKey = esvInput.value.trim();
+      saveJSON(SETTINGS_KEY, settings);
+    });
+
+    document.getElementById("prefetch-all").addEventListener("click", async () => {
+      const btn = document.getElementById("prefetch-all");
+      const status = document.getElementById("prefetch-status");
+      const counter = document.getElementById("cache-count");
+      btn.disabled = true; status.textContent = "Starting…";
+      const refs = allVerses().map(v => v.ref);
+      try {
+        const { fetched, total, errors } = await ensureTextsForRefs(refs, (n, t, ref) => {
+          status.textContent = `Fetched ${n}/${t}: ${ref}`;
+          counter.textContent = Object.keys(textCache).length;
+        });
+        status.textContent = `Done. ${fetched}/${total} fetched.${errors.length ? ` ${errors.length} error(s): ${errors.map(e => e.ref).join(", ")}` : ""}`;
+        counter.textContent = Object.keys(textCache).length;
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+      } finally { btn.disabled = false; }
+    });
+
+    document.getElementById("clear-cache").addEventListener("click", () => {
+      if (!confirm("Clear all cached verse text? (You'll need to re-fetch.)")) return;
+      textCache = {}; saveJSON(TEXT_KEY, textCache);
+      document.getElementById("cache-count").textContent = "0";
+    });
+
+    // Browser voice
+    document.getElementById("voice-select").addEventListener("change", (e) => {
+      settings.voiceURI = e.target.value; saveJSON(SETTINGS_KEY, settings);
+    });
+    const rs = document.getElementById("rate-slider");
+    const ps = document.getElementById("pitch-slider");
+    rs.addEventListener("input", () => { settings.rate = parseFloat(rs.value); document.getElementById("rate-val").textContent = settings.rate.toFixed(2); saveJSON(SETTINGS_KEY, settings); });
+    ps.addEventListener("input", () => { settings.pitch = parseFloat(ps.value); document.getElementById("pitch-val").textContent = settings.pitch.toFixed(2); saveJSON(SETTINGS_KEY, settings); });
+    document.getElementById("test-speak").addEventListener("click", () => {
+      // Test sample uses a non-Bible phrase to avoid bundling ESV text
+      speakViaBrowser("This is a test of the selected voice.");
+    });
+
+    // OpenAI
+    const oEnabled = document.getElementById("openai-enabled");
+    const oKey = document.getElementById("openai-key");
+    const oVoice = document.getElementById("openai-voice");
+    const oModel = document.getElementById("openai-model");
+    const oTest = document.getElementById("test-openai");
+    const saveOpenAI = () => {
+      settings.openai = { enabled: oEnabled.checked, apiKey: oKey.value.trim(), voice: oVoice.value, model: oModel.value };
+      saveJSON(SETTINGS_KEY, settings); oTest.disabled = !settings.openai.apiKey;
+    };
+    oEnabled.addEventListener("change", saveOpenAI);
+    oKey.addEventListener("input", saveOpenAI);
+    oVoice.addEventListener("change", saveOpenAI);
+    oModel.addEventListener("change", saveOpenAI);
+    oTest.addEventListener("click", async () => {
+      if (!settings.openai.apiKey) { alert("Enter an API key first."); return; }
+      oTest.disabled = true; oTest.textContent = "Loading…";
+      try { await speakViaOpenAI("This is a test of the OpenAI voice."); }
+      finally { oTest.disabled = false; oTest.textContent = "🔊 Test OpenAI"; }
+    });
+  }
+
+  // ============================================================================
+  // Export / Import
+  // ============================================================================
+  function exportProgress() {
+    const blob = new Blob([JSON.stringify({
+      progress, customVerses, textCache,
+      exportedAt: new Date().toISOString(), version: 1,
+    }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `esv-memorize-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function importProgress(file) {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        if (!data.progress) throw new Error("Missing progress field");
+        for (const [ref, s] of Object.entries(data.progress)) {
+          const existing = progress[ref];
+          if (!existing || s.box > existing.box ||
+              (s.box === existing.box && new Date(s.lastReviewed) > new Date(existing.lastReviewed))) {
+            progress[ref] = s;
+          }
+        }
+        const refs = new Set(customVerses.map(v => v.ref));
+        for (const v of (data.customVerses || [])) if (!refs.has(v.ref)) customVerses.push(v);
+        if (data.textCache) Object.assign(textCache, data.textCache);
+        saveJSON(PROGRESS_KEY, progress);
+        saveJSON(CUSTOM_KEY, customVerses);
+        saveJSON(TEXT_KEY, textCache);
+        alert(`Imported. ${Object.keys(data.progress).length} progress entries, ${(data.customVerses||[]).length} custom verses, ${Object.keys(data.textCache||{}).length} cached texts.`);
+        setView(currentView);
+      } catch (e) { alert("Import failed: " + e.message); }
+    };
+    r.readAsText(file);
+  }
+
+  // ============================================================================
+  // View routing
+  // ============================================================================
+  let currentView = "drill";
+  function setView(v) {
+    if (currentView === "exam" && v !== "exam") abortRecognition();
+    currentView = v;
+    document.querySelectorAll("nav [data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+    if (v === "drill") nextDrillCard();
+    else if (v === "exam") nextExamCard();
+    else if (v === "browse") renderBrowse();
+    else if (v === "list") renderList();
+    else if (v === "settings") renderSettings();
+  }
+
+  document.querySelectorAll("nav [data-view]").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+  document.getElementById("export").addEventListener("click", (e) => { e.preventDefault(); exportProgress(); });
+  document.getElementById("import-file").addEventListener("change", (e) => { if (e.target.files[0]) importProgress(e.target.files[0]); e.target.value = ""; });
+  document.getElementById("reset").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (confirm("Clear all progress and custom verses? (Cached texts and settings are kept.)")) {
+      localStorage.removeItem(PROGRESS_KEY); localStorage.removeItem(CUSTOM_KEY);
+      progress = {}; customVerses = [];
+      setView(currentView);
+    }
+  });
+
+  setView("drill");
+})();
+</script>
+</body>
+</html>
