@@ -86,6 +86,19 @@ window.VERSE_PLAN = {
 
 // Flatten for the app's queue: each entry is { ref, month, theme }.
 // Note: no `text` field — fetched lazily by the app via the ESV API client.
-window.VERSES = window.VERSE_PLAN.months.flatMap(m =>
-  m.refs.map(ref => ({ ref, month: m.month, theme: m.theme }))
-);
+// Each month also gets one "whole month" combined entry whose text is composed
+// at lookup time from the underlying individual refs (see textFor / fetchVerse
+// in index.html). It enters the drill/exam queue like any other card, has its
+// own Leitner box, and is filtered by the existing month picker.
+window.VERSES = window.VERSE_PLAN.months.flatMap(m => {
+  const individual = m.refs.map(ref => ({ ref, month: m.month, theme: m.theme }));
+  if (m.refs.length === 0) return individual;
+  const wholeMonth = {
+    ref: `${m.passage} · Whole month`,
+    month: m.month,
+    theme: m.theme,
+    isWholeMonth: true,
+    refs: [...m.refs],
+  };
+  return [...individual, wholeMonth];
+});

@@ -187,7 +187,24 @@
   const bundledBooks = [];         // array of book metadata in canonical order
   let bundledAliasMap = null;      // lowercased alias → book slug (lazy)
 
-  const textFor = (ref) => bundledTexts[ref] || textCache[ref] || null;
+  // Map of whole-month combined ref → underlying individual refs, built once
+  // from VERSE_PLAN. Lets textFor() compose combined text on the fly without
+  // bloating textCache with a redundant joined copy.
+  const wholeMonthRefs = new Map(
+    (window.VERSE_PLAN?.months || [])
+      .filter(m => m.refs?.length)
+      .map(m => [`${m.passage} · Whole month`, [...m.refs]])
+  );
+
+  const textFor = (ref) => {
+    const underlying = wholeMonthRefs.get(ref);
+    if (underlying) {
+      const parts = underlying.map(r => bundledTexts[r] || textCache[r]);
+      if (parts.some(p => !p)) return null;
+      return parts.join(" ");
+    }
+    return bundledTexts[ref] || textCache[ref] || null;
+  };
 
   async function loadBundledTexts() {
     if (bundledLoaded) return true;
@@ -279,11 +296,17 @@
 
   const getState = (ref) => progress[ref] || { box: 0, lastReviewed: null };
   const isDue = (ref) => {
+    if (forcedRefs.has(ref)) return true;
     const s = getState(ref);
     if (!s.lastReviewed) return true;
     const days = (Date.now() - new Date(s.lastReviewed).getTime()) / 86400000;
     return days >= INTERVALS[s.box];
   };
+
+  // In-memory set of refs the user pushed into today's session via the
+  // "Queue all" button, overriding the spaced-repetition due-date check.
+  // Cleared on page reload (intentional — one-session intent).
+  const forcedRefs = new Set();
 
   // Month filter ---------------------------------------------------------------
   const monthsList = () => window.VERSE_PLAN?.months || [];
@@ -392,6 +415,48 @@
       if (revealed.has(wordIdx)) return `<span class="revealed">${escapeHtml(t)}</span>`;
       const masked = t.replace(/[A-Za-z0-9]/g, "_");
       return `<span class="masked">${escapeHtml(masked)}</span>`;
+    }).join("");
+  }
+
+  // Per-verse masked layout for whole-month cards. The combined text composed
+  // by textFor() joins each verse with " ", which has no word-tokens, so the
+  // word-index space concatenates cleanly across verses. We walk card.refs in
+  // order, look up each verse's text, and slice the global `revealed` Set by
+  // a running word offset.
+  function renderWholeMonthMasked(card, revealed) {
+    let offset = 0;
+    return card.refs.map(ref => {
+      const text = textFor(ref);
+      if (!text) {
+        return `
+          <div style="padding:0.5rem 0;border-bottom:1px dashed var(--line);">
+            <div style="font-size:0.78rem;color:var(--accent);font-weight:600;letter-spacing:0.08em;margin-bottom:0.25rem;">${escapeHtml(ref)}</div>
+            <div style="color:var(--muted);font-style:italic;">(text not downloaded)</div>
+          </div>`;
+      }
+      const { words } = wordTokens(text);
+      const start = offset;
+      offset += words.length;
+      const verseRevealed = new Set();
+      for (let i = 0; i < words.length; i++) {
+        if (revealed.has(start + i)) verseRevealed.add(i);
+      }
+      return `
+        <div style="padding:0.5rem 0;border-bottom:1px dashed var(--line);">
+          <div style="font-size:0.78rem;color:var(--accent);font-weight:600;letter-spacing:0.08em;margin-bottom:0.25rem;">${escapeHtml(ref)}</div>
+          <div style="line-height:1.9;">${renderMasked(text, verseRevealed)}</div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderWholeMonthFull(card) {
+    return card.refs.map(ref => {
+      const text = textFor(ref) || "(text not downloaded)";
+      return `
+        <div style="padding:0.5rem 0;border-bottom:1px dashed var(--line);">
+          <div style="font-size:0.78rem;color:var(--accent);font-weight:600;letter-spacing:0.08em;margin-bottom:0.25rem;">${escapeHtml(ref)}</div>
+          <div style="line-height:1.9;">${escapeHtml(text)}</div>
+        </div>`;
     }).join("");
   }
 
@@ -551,6 +616,7 @@
       const cnt = m.refs.length;
       return `<option value="${m.month}" ${sel}>${m.month}. ${escapeHtml(m.theme)} (${cnt})</option>`;
     }).join("");
+    const queueDisabled = cur === "all" ? "disabled" : "";
     return `
       <div style="background:var(--card);border:1px solid var(--line);border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem;font-size:0.9rem;">
         <span style="color:var(--muted);">📅</span>
@@ -558,15 +624,48 @@
           <option value="all" ${cur==="all"?"selected":""}>All months</option>
           ${opts}
         </select>
+        <button id="queue-month" ${queueDisabled} title="Jump directly to the whole-month overview card — shows every verse of this month at once (each labeled with its reference)"
+          style="padding:0.35rem 0.7rem;border:1px solid var(--accent);background:var(--card);color:var(--accent);border-radius:3px;cursor:pointer;font-family:inherit;font-size:0.85rem;white-space:nowrap;${queueDisabled?'opacity:0.4;cursor:not-allowed;':''}">
+          Whole month
+        </button>
       </div>`;
   }
   function wireMonthBar() {
     const sel = document.getElementById("month-select");
-    if (!sel) return;
-    sel.addEventListener("change", () => {
-      setActiveMonth(sel.value === "all" ? "all" : parseInt(sel.value, 10));
-      setView(currentView);
-    });
+    if (sel) {
+      sel.addEventListener("change", () => {
+        setActiveMonth(sel.value === "all" ? "all" : parseInt(sel.value, 10));
+        setView(currentView);
+      });
+    }
+    const queueBtn = document.getElementById("queue-month");
+    if (queueBtn && !queueBtn.disabled) {
+      queueBtn.addEventListener("click", () => {
+        const wm = activeVerses().find(v => v.isWholeMonth);
+        if (!wm) { alert("No whole-month card for this month."); return; }
+        const text = textFor(wm.ref);
+        if (!text) {
+          alert("Whole-month text not yet available — some underlying verses aren't downloaded. Prefetch in Settings first.");
+          return;
+        }
+        forcedRefs.add(wm.ref);
+        if (currentView === "exam") {
+          exam.current = wm;
+          exam.phase = "ready";
+          exam.finalText = "";
+          exam.interimText = "";
+          exam.result = null;
+          renderExam();
+        } else {
+          drill.queue = [wm];
+          drill.current = wm;
+          drill.fullyShown = false;
+          drill.revealed = defaultRevealedWords(text);
+          if (currentView !== "drill") setView("drill");
+          else renderDrill();
+        }
+      });
+    }
   }
 
   // ============================================================================
@@ -654,7 +753,9 @@
     }
 
     const text = textFor(drill.current.ref);
-    const masked = renderMasked(text, drill.revealed);
+    const masked = drill.current.isWholeMonth
+      ? renderWholeMonthMasked(drill.current, drill.revealed)
+      : renderMasked(text, drill.revealed);
     const box = getState(drill.current.ref).box;
     const themeLine = drill.current.month
       ? `<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem;">Month ${drill.current.month} · ${escapeHtml(drill.current.theme || "")}</div>`
@@ -706,10 +807,14 @@
     } else if (action === "ok") {
       const s = getState(cur.ref);
       progress[cur.ref] = { box: Math.min(s.box + 1, MAX_BOX), lastReviewed: new Date().toISOString() };
-      saveJSON(PROGRESS_KEY, progress); nextDrillCard();
+      saveJSON(PROGRESS_KEY, progress);
+      forcedRefs.delete(cur.ref);
+      nextDrillCard();
     } else if (action === "no") {
       progress[cur.ref] = { box: 0, lastReviewed: new Date().toISOString() };
-      saveJSON(PROGRESS_KEY, progress); nextDrillCard();
+      saveJSON(PROGRESS_KEY, progress);
+      forcedRefs.delete(cur.ref);
+      nextDrillCard();
     }
   }
 
@@ -790,11 +895,14 @@
           </div>
         </div>`;
     } else if (exam.phase === "preview") {
+      const previewHtml = exam.current.isWholeMonth
+        ? renderWholeMonthFull(exam.current)
+        : escapeHtml(text);
       content.innerHTML = renderMonthBar() + `
         <div class="card">
           <div class="ref">${escapeHtml(ref)} · Box ${box}</div>
           ${themeLine}
-          <div class="text">${escapeHtml(text)}</div>
+          <div class="text">${previewHtml}</div>
           <div class="controls">
             <button class="btn primary" data-action="start">🎤 Start recording</button>
             <button class="btn" data-action="back">Back</button>
@@ -857,10 +965,14 @@
     } else if (action === "pass") {
       const s = getState(exam.current.ref);
       progress[exam.current.ref] = { box: Math.min(s.box + 1, MAX_BOX), lastReviewed: new Date().toISOString() };
-      saveJSON(PROGRESS_KEY, progress); nextExamCard();
+      saveJSON(PROGRESS_KEY, progress);
+      forcedRefs.delete(exam.current.ref);
+      nextExamCard();
     } else if (action === "fail") {
       progress[exam.current.ref] = { box: 0, lastReviewed: new Date().toISOString() };
-      saveJSON(PROGRESS_KEY, progress); nextExamCard();
+      saveJSON(PROGRESS_KEY, progress);
+      forcedRefs.delete(exam.current.ref);
+      nextExamCard();
     } else if (action === "retry") {
       exam.phase = "ready"; exam.finalText = ""; exam.interimText = ""; exam.result = null;
       renderExam();
@@ -1260,7 +1372,11 @@
       const status = document.getElementById("prefetch-status");
       const counter = document.getElementById("cache-count");
       btn.disabled = true; status.textContent = "Starting…";
-      const refs = allVerses().map(v => v.ref);
+      // Expand whole-month entries to their underlying individual refs — the
+      // combined card is composed at lookup time, not fetched.
+      const refs = [...new Set(allVerses().flatMap(v =>
+        wholeMonthRefs.get(v.ref) || [v.ref]
+      ))];
       try {
         const { fetched, total, errors } = await ensureTextsForRefs(refs, (n, t, ref) => {
           status.textContent = `Fetched ${n}/${t}: ${ref}`;
